@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Eye, FileDiff, X } from 'lucide-react';
+import { Eye, FileDiff, X, ListTodo } from 'lucide-react';
 import { Button } from '../ui/button';
 import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group';
 import {
@@ -13,6 +13,9 @@ import type { TaskWithAttemptStatus } from 'shared/types';
 import { ActionsDropdown } from '../ui/actions-dropdown';
 import { usePostHog } from 'posthog-js/react';
 import { WorkspaceWithSession } from '@/types/attempt';
+import NiceModal from '@ebay/nice-modal-react';
+import { CreateSubtasksFromTextDialog } from '../dialogs/tasks/CreateSubtasksFromTextDialog';
+import { useEntries } from '@/contexts/EntriesContext';
 
 interface AttemptHeaderActionsProps {
   onClose: () => void;
@@ -31,6 +34,29 @@ export const AttemptHeaderActions = ({
 }: AttemptHeaderActionsProps) => {
   const { t } = useTranslation('tasks');
   const posthog = usePostHog();
+  const { entries } = useEntries();
+
+  // Extract output text from entries to detect if there are subtasks
+  const outputText = entries
+    .filter((entry) => entry.type === 'STDOUT')
+    .map((entry) => entry.content)
+    .join('\n');
+
+  // Check if output looks like it contains a list (subtasks)
+  const hasSubtaskLikeOutput =
+    outputText &&
+    /^[\-\*•\d+.\s]+(.*?)$/m.test(outputText) &&
+    attempt?.id &&
+    task?.project_id;
+
+  const handleCreateSubtasks = () => {
+    if (!attempt?.id || !task?.project_id) return;
+    NiceModal.show(CreateSubtasksFromTextDialog, {
+      projectId: task.project_id,
+      sourceTaskId: task.id,
+      text: outputText,
+    });
+  };
 
   return (
     <>
@@ -123,6 +149,25 @@ export const AttemptHeaderActions = ({
       )}
       {typeof mode !== 'undefined' && onModeChange && (
         <div className="h-4 w-px bg-border" />
+      )}
+      {hasSubtaskLikeOutput && (
+        <>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="icon"
+                aria-label="Create subtasks"
+                onClick={handleCreateSubtasks}
+              >
+                <ListTodo size={16} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              Create subtasks from output
+            </TooltipContent>
+          </Tooltip>
+          <div className="h-4 w-px bg-border" />
+        </>
       )}
       <ActionsDropdown task={task} attempt={attempt} />
       <Button variant="icon" aria-label="Close" onClick={onClose}>
